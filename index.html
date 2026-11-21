@@ -46,11 +46,11 @@ h2{margin:0 0 12px;color:var(--ye);font-size:19px}
 .hint{color:var(--mut);font-size:13px;margin:8px 0 0}
 
 /* ---- DAILY SALES REPORT (one A4 page) ---- */
-#rpt{background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;font-weight:800;width:190mm;margin:0 auto;border:2.5px solid #000}
-#rpt .hd{display:grid;grid-template-columns:1.3fr 1.5fr .7fr;border-bottom:2.5px solid #000;height:18mm}#rpt .hd>div:first-child{white-space:nowrap;font-size:12px;padding:0 2mm}
-#rpt .hd>div{display:flex;align-items:center;padding:0 3mm;font-size:13px}#rpt .hd .ttl{justify-content:center;font-size:28px;letter-spacing:1px;border-left:2.5px solid #000;border-right:2.5px solid #000}
-#rpt .hd .lg{justify-content:flex-end}#rpt .hd img{height:14mm}
-#rpt .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}#rpt .cols>div{min-width:0}#rpt .cols>div:first-child{border-right:2.5px solid #000}
+#rpt{background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;font-weight:800;width:190mm;margin:0 auto;border:0}
+#rpt .hd{display:grid;grid-template-columns:1fr 1fr;border:0;height:18mm;position:relative}#rpt .hd>div:first-child{white-space:nowrap;font-size:12px;padding:0 2mm}
+#rpt .hd>div{display:flex;align-items:center;padding:0 3mm;font-size:13px}#rpt .hd .ttl{justify-content:center;font-size:28px;letter-spacing:2px;border:0;position:absolute;left:30%;width:40%;top:0;bottom:0;padding:0}
+#rpt .hd .lg{justify-content:flex-end;grid-column:2;padding-right:10mm}#rpt .hd img{height:14mm}
+#rpt .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border:2.5px solid #000}#rpt .cols>div{min-width:0}#rpt .cols>div:first-child{border-right:2.5px solid #000}
 #rpt table{border-collapse:collapse;width:100%;min-width:0;table-layout:fixed}
 #rpt td,#rpt th{border:1.5px solid #000;height:7.5mm;padding:0 1.6mm;font-size:13px;font-weight:800;overflow:hidden;white-space:nowrap;text-align:left}
 #rpt tr:first-child td,#rpt tr:first-child th{border-top:0}#rpt td:first-child,#rpt th:first-child{border-left:0}#rpt td:last-child,#rpt th:last-child{border-right:0}
