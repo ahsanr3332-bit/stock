@@ -92,11 +92,15 @@ function lastE(pid,before){let r=null;for(const e of DB.entries)if(e.pid==pid&&(
 
 let tab='daily',D=ymd(new Date()),RT='daily',RD=ymd(new Date()),RE=ymd(new Date());
 let FL='all',FS='all';
-const ok=p=>(FL=='all'||p.dept==FL)&&(FS=='all'||p.section==FS);
+let FQ='daily';
+const isStoreBr=()=>/bashundhara|basundhara|bashundara/i.test(BR);
+const freqOpts=()=>isStoreBr()?['weekly','daily','store']:['weekly','daily'];
+const pfq=p=>p.freq||'weekly';
+const ok=p=>(FL=='all'||p.dept==FL)&&(FS=='all'||p.section==FS)&&(FQ=='all'||pfq(p)==FQ);
 function filt(cb){return `<label>Location<select onchange="FL=this.value;${cb}()"><option value="all">All</option>${DB.locations.map(x=>`<option ${FL==x?'selected':''}>${x}</option>`).join('')}</select></label><label>Section<select onchange="FS=this.value;${cb}()"><option value="all">All</option>${DB.sections.map(x=>`<option ${FS==x?'selected':''}>${esc(x)}</option>`).join('')}</select></label>`}
 function sel(id,k,opts,cur){if(!opts.includes(cur))opts=[...opts,cur];return `<td><select onchange="upd('${id}','${k}',this.value)">${opts.map(o=>`<option ${o==cur?'selected':''}>${esc(o)}</option>`).join('')}</select></td>`}
-const TABS=[['daily','Daily Entry'],['report','Reports'],['sales','Daily Sales'],['products','Products'],['settings','Settings'],['all','All Branches']];
-function go(t){tab=t;$('#nav').innerHTML=TABS.filter(x=>x[0]=='all'?isTop():(isAdmin()||x[0]=='daily'||x[0]=='report'||x[0]=='sales')).map(([k,n])=>`<button class="${k==t?'on':''}" onclick="go('${k}')">${n}</button>`).join('');({daily,report,sales,products,settings,all:allView})[t]();window.scrollTo(0,0)}
+const TABS=[['daily','Daily Stock'],['weekly','Weekly Stock'],['store','Store'],['report','Reports'],['sales','Daily Sales'],['products','Products'],['settings','Settings'],['all','All Branches']];
+function go(t){tab=t;if(t=='daily')FQ='daily';else if(t=='weekly')FQ='weekly';else if(t=='store')FQ='store';$('#nav').innerHTML=TABS.filter(x=>x[0]=='all'?isTop():x[0]=='store'?isStoreBr():(isAdmin()||x[0]=='daily'||x[0]=='weekly'||x[0]=='report'||x[0]=='sales')).map(([k,n])=>`<button class="${k==t?'on':''}" onclick="go('${k}')">${n}</button>`).join('');({daily,weekly:daily,store:daily,report,sales,products,settings,all:allView})[t]();window.scrollTo(0,0)}
 
 function lowList(){return act().filter(p=>{const e=lastE(p.id);const q=e?e.close:p.init;return p.min>0&&q<=p.min}).map(p=>{const e=lastE(p.id);return{p,q:e?e.close:p.init}})}
 function lowBox(){return lowBox0()+(false&&(!DB.lastBackup||Date.now()-DB.lastBackup>6048e5)?`<div class="card" style="padding:10px 16px"><b>Backup reminder:</b> download a backup file from Settings and keep a copy somewhere safe (pen drive or Google Drive).</div>`:'')}
@@ -105,9 +109,9 @@ function lowBox0(){const l=lowList();return l.length?`<div class="alert"><b>Low 
 /* ---------- DAILY ---------- */
 function daily(){
  const ps=act().filter(ok);
- let h=lowBox()+`<div class="card"><div class="bar"><label>Date<input type="date" id="dd" value="${D}" onchange="D=this.value;daily()"></label>${filt('daily')}
- <button class="b" onclick="saveDay()">Save this day</button><button class="g" onclick="exportReport('daily',D)">Export this day to Excel</button></div>`;
- if(!ps.length)return $('#v').innerHTML=h+`<div class="empty">No products yet. Add your first product in the Products tab.</div></div>`;
+ let h=lowBox()+`<div class="card"><h2>${FQ=='weekly'?'Weekly Stock (count once a week)':FQ=='store'?'Store Stock (Bashundhara)':'Daily Stock'}</h2><div class="bar"><label>${FQ=='weekly'?'Stock count date':'Date'}<input type="date" id="dd" value="${D}" onchange="D=this.value;daily()"></label>${filt('daily')}
+ <button class="b" onclick="saveDay()">Save this day</button><button class="g" onclick="exportReport('daily',D)">Export this day to Excel</button><button class="b" onclick="RT='daily';RD=D;rptJpg()">Download JPG (A4)</button></div>`;
+ if(!ps.length)return $('#v').innerHTML=h+`<div class="empty">No ${FQ} stock products yet. Add them in the Products tab.</div></div>`;
  h+=`<div class="wrap"><table><tr><th>Product</th><th>Unit</th><th>Price</th><th>Opening</th><th>Added today</th><th>Closing</th><th>Used</th><th>Used value</th><th>Closing value</th></tr>`;
  for(const p of ps){
   const e=DB.entries.find(x=>x.pid==p.id&&x.date==D),pv=lastE(p.id,D);
@@ -118,7 +122,7 @@ function daily(){
   <td><input type="number" step="any" min="0" class="c" value="${e?e.close:''}" placeholder="count" oninput="calc()"></td>
   <td class="u">-</td><td>-</td><td>-</td></tr>`}
  h+=`<tr class="t"><td colspan="6">Total</td><td></td><td id="tu">0</td><td id="tc">0</td></tr></table></div>
- <p class="hint">Opening comes from yesterday's closing. Enter what was added and what is left (closing). Used quantity and values are calculated for you.</p></div>`;
+ <p class="hint">Opening comes from the last saved closing${FQ=='weekly'?' (previous weekly count)':''}. Enter what was added and what is left (closing). Used quantity and values are calculated for you.</p></div>`;
  $('#v').innerHTML=h;calc();
 }
 function calc(){
@@ -143,7 +147,7 @@ function saveDay(){
   if(isNaN(c))return;
   if(o+a-c<0){bad++;return}
   DB.entries=DB.entries.filter(e=>!(e.pid==p.id&&e.date==D));
-  DB.entries.push({date:D,pid:p.id,open:o,add:a,close:c,price:p.price,at:Date.now(),by:(ME&&ME.name)||''});DB.pending=DB.pending||[];const pk=D+'|'+p.id;if(!DB.pending.includes(pk))DB.pending.push(pk);n++;
+  DB.entries.push({date:D,pid:p.id,fq:pfq(p),open:o,add:a,close:c,price:p.price,at:Date.now(),by:(ME&&ME.name)||''});DB.pending=DB.pending||[];const pk=D+'|'+p.id;if(!DB.pending.includes(pk))DB.pending.push(pk);n++;
  });
  persist();
  if(bad)toast(bad+' item(s) skipped: closing is more than opening + added');
@@ -159,20 +163,21 @@ function products(){
  <label>Unit<input id="pu" placeholder="kg / L / pcs" size="8"></label>
  <label>Location<select id="pl">${DB.locations.map(x=>`<option>${esc(x)}</option>`).join('')}</select></label>
  <label>Section<select id="psx">${DB.sections.map(x=>`<option>${esc(x)}</option>`).join('')}</select></label>
+ <label>Stock type<select id="pf">${freqOpts().map(x=>`<option value="${x}">${x[0].toUpperCase()+x.slice(1)}</option>`).join('')}</select></label>
  <label>Price per unit<input id="pp" type="number" step="any" min="0"></label>
  <label>Opening stock<input id="pi" type="number" step="any" min="0" value="0"></label>
  <label>Low-stock alert at<input id="pm" type="number" step="any" min="0" value="0"></label>
  <button class="b" onclick="addP()">Add product</button></div></div>
- ${bulkCard()}
+ ${dailyCard()}${storeCard()}${bulkCard()}
  <div class="card"><h2>Product list</h2><div class="bar">
  <label>Section<select id="pfs" onchange="PFS=this.value;pfilter()"><option value="all">All sections (${ps.length})</option>${DB.sections.map(x=>`<option value="${esc(x)}" ${PFS==x?'selected':''}>${esc(x)} (${ps.filter(p=>p.section==x).length})</option>`).join('')}</select></label>
  <label>Search<input id="pfq" value="${esc(PFQ)}" placeholder="type a product name" oninput="PFQ=this.value;pfilter()"></label>
  <button class="g" onclick="PFS='all';PFQ='';products()">Clear</button><span id="pfc" class="hint" style="align-self:center"></span></div>`;
  if(!ps.length)h+=`<div class="empty">Nothing here yet.</div>`;
- else{h+=`<div class="wrap"><table><tr><th>Product</th><th>Location</th><th>Section</th><th>Unit</th><th>Price</th><th>Alert at</th><th>Current stock</th><th></th></tr>`;
+ else{h+=`<div class="bar" style="margin:10px 0"><button class="g x" onclick="pkDel()">Delete selected</button><label>Change selected to<select id="pkf"><option value="">- Stock type -</option>${freqOpts().map(x=>`<option>${x}</option>`).join('')}</select></label><select id="pks"><option value="">- Section -</option>${DB.sections.map(x=>`<option>${esc(x)}</option>`).join('')}</select><select id="pkl"><option value="">- Location -</option>${DB.locations.map(x=>`<option>${esc(x)}</option>`).join('')}</select><button class="b" onclick="pkSet()">Apply to selected</button></div><div class="wrap"><table><tr><th><input type="checkbox" onclick="pkAll(this)"></th><th>Product</th><th>Location</th><th>Section</th><th>Stock</th><th>Unit</th><th>Price</th><th>Alert at</th><th>Current stock</th><th></th></tr>`;
  for(const p of ps){const e=lastE(p.id),q=e?e.close:p.init;
-  h+=`<tr class="pr"><td><input style="width:170px;text-align:left" value="${esc(p.name)}" onchange="upd('${p.id}','name',this.value)"></td>
-  ${sel(p.id,'dept',DB.locations,p.dept)}${sel(p.id,'section',DB.sections,p.section)}<td><input style="width:70px;text-align:left" value="${esc(p.unit)}" onchange="upd('${p.id}','unit',this.value)"></td>
+  h+=`<tr class="pr"><td><input type="checkbox" class="pk" value="${p.id}"></td><td><input style="width:170px;text-align:left" value="${esc(p.name)}" onchange="upd('${p.id}','name',this.value)"></td>
+  ${sel(p.id,'dept',DB.locations,p.dept)}${sel(p.id,'section',DB.sections,p.section)}${sel(p.id,'freq',freqOpts(),pfq(p))}<td><input style="width:70px;text-align:left" value="${esc(p.unit)}" onchange="upd('${p.id}','unit',this.value)"></td>
   <td><input type="number" step="any" value="${p.price}" onchange="upd('${p.id}','price',+this.value)"></td>
   <td><input type="number" step="any" value="${p.min}" onchange="upd('${p.id}','min',+this.value)"></td>
   <td class="${p.min>0&&q<=p.min?'lo':'ok'}">${f(q)} ${esc(p.unit)}</td>
@@ -183,7 +188,7 @@ function products(){
 function addP(){
  const name=$('#pn').value.trim(),unit=$('#pu').value.trim()||'pcs',price=num($('#pp').value);
  if(!name||isNaN(price))return toast('Enter name and price');
- DB.products.push({id:nid(),name,unit,price,init:num($('#pi').value)||0,min:num($('#pm').value)||0,dept:$('#pl').value,section:$('#psx').value,on:true});
+ DB.products.push({id:nid(),name,unit,price,init:num($('#pi').value)||0,min:num($('#pm').value)||0,dept:$('#pl').value,section:$('#psx').value,freq:$('#pf').value,on:true});
  persist();toast(name+' added');products();
 }
 function upd(id,k,v){const p=DB.products.find(x=>x.id==id);if(k=='name'&&!v.trim())return products();p[k]=v;persist();toast('Updated');if(tab=='products')pfilter()}
@@ -191,9 +196,19 @@ var PFS='all',PFQ='';
 function pfilter(){
  const q=PFQ.trim().toLowerCase();let n=0,t=0;
  document.querySelectorAll('tr.pr').forEach(r=>{t++;
-  const name=r.querySelector('input').value.toLowerCase(),sec=r.querySelectorAll('select')[1].value;
+  const name=r.querySelector('input:not(.pk)').value.toLowerCase(),sec=r.querySelectorAll('select')[1].value;
   const show=(PFS=='all'||sec==PFS)&&(!q||name.includes(q));r.style.display=show?'':'none';if(show)n++});
  const c=$('#pfc');if(c)c.textContent='Showing '+n+' of '+t}
+const pkIds=()=>[...document.querySelectorAll('input.pk:checked')].map(i=>i.value);
+function pkAll(c){document.querySelectorAll('tr.pr').forEach(r=>{if(r.style.display!='none')r.querySelector('input.pk').checked=c.checked})}
+function pkDel(){const ids=pkIds();if(!ids.length)return toast('Tick the products first');
+ if(!confirm('Remove '+ids.length+' selected products from the list?'))return;
+ const del=confirm('Also delete ALL entries of these '+ids.length+' products (reports and Google Sheet)?\n\nOK = delete their entries too\nCancel = keep past entries in reports');
+ ids.forEach(id=>{const p=DB.products.find(x=>x.id==id);if(!p)return;p.on=false;if(del){p.purged=true;DB.entries=DB.entries.filter(e=>e.pid!=id);DB.pending=(DB.pending||[]).filter(k=>!k.endsWith('|'+id));DB.purgePending=[...(DB.purgePending||[]),id]}});
+ persist();toast(ids.length+' removed');products()}
+function pkSet(){const ids=pkIds();if(!ids.length)return toast('Tick the products first');
+ const a=$('#pkf').value,b=$('#pks').value,c=$('#pkl').value;if(!a&&!b&&!c)return toast('Choose what to change');
+ ids.forEach(id=>{const p=DB.products.find(x=>x.id==id);if(a)p.freq=a;if(b)p.section=b;if(c)p.dept=c});persist();toast(ids.length+' updated');products()}
 function rmP(id){const p=DB.products.find(x=>x.id==id);if(!confirm('Remove '+p.name+' from the product list?'))return;
  const del=confirm('Also delete ALL entries of '+p.name+' (reports and Google Sheet)?\n\nOK = delete its entries too\nCancel = keep past entries in reports');
  p.on=false;
@@ -224,10 +239,10 @@ const HEAD=['Product','Location','Section','Unit','Opening','Added','Used','Clos
 function report(){
  const r=build(RT,RD);
  let h=lowBox()+`<div class="card"><div class="bar">
- ${filt('report')}<label>Report type<select onchange="RT=this.value;report()">${['daily','weekly','monthly','custom'].map(t=>`<option value="${t}" ${t==RT?'selected':''}>${t[0].toUpperCase()+t.slice(1)}</option>`).join('')}</select></label>
+ ${filt('report')}<label>Stock<select onchange="FQ=this.value;report()"><option value="daily" ${FQ=='daily'?'selected':''}>Daily stock</option><option value="weekly" ${FQ=='weekly'?'selected':''}>Weekly stock</option>${isStoreBr()?`<option value="store" ${FQ=='store'?'selected':''}>Store stock</option>`:''}<option value="all" ${FQ=='all'?'selected':''}>All</option></select></label><label>Report type<select onchange="RT=this.value;report()">${['daily','weekly','monthly','custom'].map(t=>`<option value="${t}" ${t==RT?'selected':''}>${t[0].toUpperCase()+t.slice(1)}</option>`).join('')}</select></label>
  <label>${RT=='custom'?'From date':RT=='daily'?'Date':'Any date in the period'}<input type="date" value="${RD}" onchange="RD=this.value;report()"></label>
  ${RT=='custom'?`<label>To date<input type="date" value="${RE}" onchange="RE=this.value;report()"></label>`:''}
- <button class="b" onclick="exportReport(RT,RD)">Export to Excel</button><button class="g" onclick="window.print()">Print</button></div>
+ <button class="b" onclick="exportReport(RT,RD)">Export to Excel</button><button class="g" onclick="window.print()">Print</button><button class="b" onclick="rptJpg()">Download JPG (A4)</button></div>
  <h2>${r.a==r.b?r.a:r.a+' to '+r.b}</h2>`;
  if(!r.rows.length)return $('#v').innerHTML=h+`<div class="empty">No entries saved for this period.</div></div>`;
  h+=`<div class="wrap"><table><tr>${HEAD.map(x=>`<th>${x}</th>`).join('')}</tr>`;
@@ -235,6 +250,32 @@ function report(){
  h+=`<tr class="t"><td colspan="9">Total value</td><td>${f(r.tu)}</td><td>${f(r.tc)}</td><td></td></tr></table></div></div>`;
  $('#v').innerHTML=h;
 }
+async function rptJpg(){
+ const r=build(RT,RD);if(!r.rows.length)return toast('No entries to download');
+ const W=1588,H=2246,M=70,RH=46,TOP=300,BOT=110,FN='Arial,"Noto Sans Bengali",sans-serif';
+ const C=[['Product',.30,'l'],['Section',.12,'l'],['Unit',.06,'l'],['Opening',.08,'r'],['Added',.08,'r'],['Used',.08,'r'],['Closing',.08,'r'],['Used value',.10,'r'],['Closing value',.10,'r']];
+ const TW=W-2*M,X=[],CW=C.map(c=>c[1]*TW);let ax=M;CW.forEach(w=>{X.push(ax);ax+=w});
+ const lg=new Image();await new Promise(ok=>{lg.onload=ok;lg.onerror=ok;lg.src=DB.logo||DEF});
+ const kind={daily:'Daily Stock',weekly:'Weekly Stock',store:'Store Stock',all:'Stock'}[FQ]||'Stock',per=r.a==r.b?r.a:r.a+' to '+r.b;
+ const body=r.rows.map(x=>[x[0],x[2],x[3],f(x[4]),f(x[5]),f(x[6]),f(x[7]),f(x[9]),f(x[10])]);body.push(['TOTAL','','','','','','',f(r.tu),f(r.tc)]);
+ const pp=Math.floor((H-TOP-BOT)/RH)-1,n=Math.ceil(body.length/pp);
+ const fit=(cx,t,w)=>{t=String(t);if(cx.measureText(t).width<=w)return t;while(t.length>1&&cx.measureText(t+'…').width>w)t=t.slice(0,-1);return t+'…'};
+ for(let p=0;p<n;p++){
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;const cx=cv.getContext('2d');
+  cx.fillStyle='#fff';cx.fillRect(0,0,W,H);cx.textBaseline='middle';cx.fillStyle='#000';
+  const lw=lg.naturalWidth?Math.round(130*lg.naturalWidth/lg.naturalHeight):0;if(lw)cx.drawImage(lg,W-M-lw,55,lw,130);
+  cx.textAlign='center';cx.font='bold 64px Georgia,serif';cx.fillText('BURGEROLOGY',W/2,115);
+  cx.font='bold 36px '+FN;cx.fillText(kind+' Report',W/2,185);cx.font='28px '+FN;cx.fillText(BR+'  |  '+per,W/2,235);
+  let y=TOP-RH;cx.fillStyle='#111';cx.fillRect(M,y,TW,RH);cx.fillStyle='#F5C518';cx.font='bold 25px '+FN;
+  C.forEach((c,i)=>{cx.textAlign=c[2]=='r'?'right':'left';cx.fillText(c[0],c[2]=='r'?X[i]+CW[i]-10:X[i]+10,y+RH/2)});
+  body.slice(p*pp,(p+1)*pp).forEach((row,k)=>{y=TOP+k*RH;const tot=row[0]=='TOTAL'&&p*pp+k==body.length-1;
+   cx.fillStyle=tot?'#FFE27A':k%2?'#F2F2F2':'#fff';cx.fillRect(M,y,TW,RH);cx.fillStyle='#000';cx.font=(tot?'bold ':'')+'25px '+FN;
+   row.forEach((v,i)=>{cx.textAlign=C[i][2]=='r'?'right':'left';cx.fillText(fit(cx,v,CW[i]-20),C[i][2]=='r'?X[i]+CW[i]-10:X[i]+10,y+RH/2)})});
+  const yb=TOP+Math.min(pp,body.length-p*pp)*RH;cx.strokeStyle='#000';cx.lineWidth=2;cx.strokeRect(M,TOP-RH,TW,yb-TOP+RH);
+  cx.fillStyle='#555';cx.font='24px '+FN;cx.textAlign='center';cx.fillText('Page '+(p+1)+' of '+n+'  |  Printed '+ymd(new Date()),W/2,H-55);
+  await new Promise(ok=>cv.toBlob(b=>{const an=document.createElement('a');an.href=URL.createObjectURL(b);an.download='Burgerology_'+kind.replace(/ /g,'_')+'_'+r.a+'_p'+(p+1)+'.jpg';document.body.appendChild(an);an.click();an.remove();setTimeout(()=>URL.revokeObjectURL(an.href),4000);ok()},'image/jpeg',.92));
+  await new Promise(ok=>setTimeout(ok,500))}
+ toast(n+' JPG page(s) downloaded (allow multiple downloads if asked)')}
 function exportReport(type,d){
  const r=build(type,d);
  if(!r.rows.length)return toast('No entries to export');
@@ -297,7 +338,7 @@ async function doAuth(e){e.preventDefault();const er=$('#ae');er.textContent='Pl
 function enter(b){
  loadBr(b);applyLogo();
  $('#who').innerHTML=' &nbsp;|&nbsp; '+esc(ME.name)+' ('+ME.role+') &nbsp;|&nbsp; '+(ME.branches.length>1?`<select onchange="enter(this.value)">${ME.branches.map(x=>`<option ${x==b?'selected':''}>${esc(x)}</option>`).join('')}</select>`:esc(b))+' &nbsp;|&nbsp; <a href="#" style="color:#000" onclick="logout();return false">Log out</a>';
- const first=!ENTERED;ENTERED=1;go(first&&isTop()?'all':(tab=='all'?'daily':tab));sync(true)}
+ const first=!ENTERED;ENTERED=1;go(first&&isTop()?'all':(tab=='all'||(tab=='store'&&!isStoreBr())?'daily':tab));sync(true)}
 function logout(){TOK='';ME=null;ENTERED=0;try{sessionStorage.removeItem('bgy_s')}catch(e){}authView()}
 function salesLocked(){return !!ME&&ME.role!='admin'&&SDT!=ymd(new Date())}
 function salesLock(){if(!salesLocked())return;document.querySelectorAll('#rpt input').forEach(i=>i.readOnly=true);toast('Past days are locked for managers')}
@@ -371,7 +412,7 @@ async function saveWithData(asNew){
 }
 function norm(d){d.sales=d.sales||{};d.slabels=d.slabels||{};d.products=d.products||[];d.entries=d.entries||[];d.users=d.users||[];
  d.sections=d.sections&&d.sections.length?d.sections:['Raw','Bonton','Horof'];d.locations=d.locations&&d.locations.length?d.locations:['Front','Kitchen'];
- d.products.forEach(p=>{p.dept=p.dept||'Kitchen';p.section=p.section||d.sections[0]});return d}
+ d.products.forEach(p=>{p.dept=p.dept||'Kitchen';p.section=p.section||d.sections[0];p.freq=p.freq||'weekly'});return d}
 const nonEmpty=d=>d&&(d.products.length||d.entries.length||d.users.length);
 const fmtT=t=>t?new Date(t).toLocaleString():'unknown time';
 const cnt=d=>d.products.length+' products, '+d.entries.length+' entries';
@@ -393,7 +434,7 @@ function mergeDB(a,b){
 /* ---------- GOOGLE SHEET SYNC ---------- */
 var SYN=false,ST=null;
 const mh=t=>{let h=5381;for(let i=0;i<t.length;i++)h=(h*33^t.charCodeAt(i))>>>0;return h};
-const metaObj=()=>({products:DB.products,sections:DB.sections,locations:DB.locations,slabels:DB.slabels||{},logo:DB.logo||''});
+const metaObj=()=>({products:DB.products,sections:DB.sections,locations:DB.locations,slabels:DB.slabels||{},scfg:DB.scfg||{},sitems:DB.sitems||[],sov:DB.sov||{},logo:DB.logo||''});
 const metaHash=()=>mh(JSON.stringify(metaObj()));
 function synSt(t){const e=$('#syn');if(e)e.textContent=t?' \u00b7 '+t:''}
 function persistLater(){clearTimeout(ST);ST=setTimeout(()=>sync(),2000)}
@@ -404,7 +445,7 @@ async function post(b){
  if(j.error=='auth'){logout();throw new Error('Session expired. Log in again.')}
  return j}
 function since0(){return(DB.syncInit&&DB.lastSync)?ymd(new Date(DB.lastSync-7*864e5)):''}
-function applyMeta(g){const m=g.meta;DB.products=m.products||[];DB.sections=m.sections&&m.sections.length?m.sections:DB.sections;DB.locations=m.locations&&m.locations.length?m.locations:DB.locations;DB.slabels=m.slabels||DB.slabels||{};DB.logo=m.logo||'';
+function applyMeta(g){const m=g.meta;DB.products=m.products||[];DB.sections=m.sections&&m.sections.length?m.sections:DB.sections;DB.locations=m.locations&&m.locations.length?m.locations:DB.locations;DB.scfg=m.scfg||DB.scfg||{};DB.sitems=m.sitems||DB.sitems||[];DB.sov=m.sov||DB.sov||{};DB.slabels=m.slabels||DB.slabels||{};DB.logo=m.logo||'';
  DB.products.forEach(p=>{p.dept=p.dept||'Kitchen';p.section=p.section||DB.sections[0]});DB.metaAt=g.metaAt;DB.metaHash=metaHash();applyLogo()}
 async function sync(manual){
  if(!DB.syncUrl||SYN||!TOK||!ME)return;
@@ -423,7 +464,7 @@ async function sync(manual){
   const purged=new Set(DB.products.filter(p=>p.purged).map(p=>String(p.id))),purge=[...(DB.purgePending||[])];
   const sent=DB.pending.map(k=>m1.get(k)).filter(e=>e&&!purged.has(String(e.pid))).map(e=>{sentAt[e.date+'|'+e.pid]=e.at;return{...e,name:(DB.products.find(p=>p.id==e.pid)||{}).name||''}});
   if(DB.rv!==3){DB.salesPending=Object.keys(DB.sales).filter(k=>/^\d{4}-/.test(k));DB.rv=3}
-  const sd=[...(DB.salesPending||[])].slice(0,10),srows=sd.filter(d=>DB.sales[d]).map(d=>({date:d,...sVals(DB.sales[d]),S:DB.sales[d]}));
+  const sd=[...(DB.salesPending||[])].slice(0,10),srows=sd.filter(d=>DB.sales[d]).map(d=>({date:d,...sVals(DB.sales[d]),S:DB.sales[d],cfg:{f:nF(DB.sales[d]),o:nO(DB.sales[d]),s:nS(DB.sales[d])}}));
   const lb=k=>String((DB.slabels||{})['l_'+k]||'').replace(/\s*\(-\)\s*=?\s*$|\s*=\s*$/,'').trim(),labels={pat:lb('pat'),fp:lb('fp'),hn:lb('hn'),bk:lb('bk')};
   const g=await post({entries:sent,purge,sales:srows,labels,lab:srows.length?(DB.slabels||{}):undefined,logo:srows.length?(DB.logo||DEF):undefined,meta:sendMeta?metaObj():undefined,metaAt:DB.metaAt||0,since:since0()});
   if(g.error)throw new Error(g.error);
@@ -450,11 +491,29 @@ function resendSales(){if(!confirm('Re-send every Daily Sales report to Google S
 function setSync(){DB.syncUrl=$('#su').value.trim();persist();if(DB.syncUrl)sync(true);else{synSt('');toast('Sync turned off')}}
 /* ---------- BULK ADD PRODUCTS ---------- */
 const BULK0=["## Raw", "লবন", "চিনি", "গুড়া দুধ", "নিকোবিনা", "যুগল চাটনি", "মাশরুম", "বেবি কর্ন", "ব্ল্যাক পেপার", "ভিনেগার", "BBQ Raw", "হোয়াইট পেপার গুড়া", "জিরা গুড়া", "মরিচের গুড়া", "কিউকাম্বার পিকেল", "কাঁচা বাদাম", "ভাঁজা বাদাম", "কাঁচা ছোলা", "সিদ্ধ ছোলা", "ময়দা", "কর্ন ফ্লাওয়ার", "বাটার", "বেকিং পাউডার", "ম্যাগি মাসালা", "মধু", "চিলি সস", "টমেটো সস", "টমেটো সস প্যাকেট", "বিট লবণ", "ডিম", "মায়োনিজ তৈল", "পোড়া তেল", "ফ্রায়ার তৈল", "মাস্টার্ড", "চাউলের গুরা", "সিতাকি মাশরুম", "জেলেপিনো", "পেয়াজ ভাঁজা", "## Buns", "রেগুলার বান", "ব্রিউচ বান", "সেন্ডউইচ বান", "ব্রাউন স্লাইস ব্রেড", "লাচ্ছা বান", "## Mayonnaise", "বার্গার মায়োনিজ", "সেন্ডুইচ মায়োনিজ", "স্পাইসি মায়োনিজ", "মিটবক্স মায়োনিজ", "হাউজ স্পেশাল", "## Vegetables", "পেয়াজ", "টমোটো", "রসুন", "লেটুস", "পুদিনা", "গোল লেবু", "লম্বা লেবু", "বাঁধাকপি", "গাজর", "শসা", "কেপসিকাম", "বোম্বাই মরিচ", "গ্রিন এপেল", "মাল্টা", "পেয়াজ পাতা", "ডালিম", "## Frozen", "চিকেন পেটি", "বিফ পেটি", "চিজ পেটি", "চিকেন টেন্ডার", "বার্গার চিজ", "মিটবক্স চিজ", "মিলানেজ", "সেন্ডউইচ চিকেন", "চিকেন উইংস", "ফিস এন্ড চিপস", "ক্রিসপি ডরিপিস", "ক্রিসপি চিকেন পেটি", "চিকেন নাগেট্স", "BBQ Sauce", "Naga Sauce", "Olive Sauce", "ড্রেসিং", "Double BBQ", "Masala", "চিলি প্লেক্স", "চিকেন পেপারনি", "বিফ বেকন", "চিকেন সসেজ", "ফ্রেন্সফ্রাই Bonton", "## Raw", "পটেটো ওয়েজেস", "চিজ", "XXL Frued chicken", "Five spice", "Smoky Lime", "Chilli", "Spice wings", "চিকেন তাম্বুরা", "ফিস তাম্বুরা", "ক্রিস্পি ফিশ হাফ", "ক্রিস্পি ফিশ ফুল", "লাচ্ছা চিকেন", "লাচ্ছা বিফ", "কেরামেল অনিওন", "অনিওন রিং", "কনডেন্স মিল্ক", "কেরামেল সিরাপ", "কফি মেট", "চকলেট চিপস", "কোল্ড কফি মিক্সিং", "ভ্যানিলা মিক্সিং", "ভ্যানিলা আইসক্রিম", "তরল দুধ", "নিউট্রেলা চকলেট", "কিটকেট চকলেট", "ওরিও চকলেট", "চকো পাউডার", "কফি", "চকলেট সিরাপ", "সুগার সিরাপ", "স্প্রাইট বোতল", "সোডা ওয়াটার", "ফান্টা বোতল", "ব্লু কোরাকাও সিরাপ", "শেক গ্লাস", "শেক স্ট্র", "মেজিক পাইপ", "কভার স্ট্র", "বোবা পার্ল", "মাচা পাউডার", "স্ট্রবেরি আইসক্রিম", "স্ট্রবেরি সিরাপ", "হাজেলে নাট সিরাপ", "## One-Time", "হ্যান্ড গ্লভস", "সাওয়ার ক্যাপ", "রাইস পলি", "গার্ভেস পলি", "সিট পলি", "মিলানেসে পলি", "মায়োনিজ পলি", "সস কাপ", "হুইল পাউডার", "স্টিল রোল", "ডাস্টার", "ফয়েল", "জালি ব্যাগ", "কফি গ্লাস ২২০ মিলি.", "ওয়ানটাইম চামচ", "বড় ব্যাগ", "মাঝারি ব্যাগ", "ছোট ব্যাগ", "ফ্রেন্সফ্রাই বক্স", "ট্রে পেপার", "বার্গার রেপিং", "বার্গার রেপিং বড়", "ডেট স্টিকার", "চিকেন স্টিকার", "বিফ স্টিকার", "শেক গ্লাস স্টিকার", "বার্গার ট্রে", "কফি জ্যাকেট", "মিট বক্স", "ফ্রেন্সফ্রাই বক্স স্মল", "ফিস এন্ড ছিপ্স বক্স", "টাইওানিস চিকেন বক্স", "উইংস বক্স", "XXL বক্স", "লাচ্ছা বক্স", "ক্রিস্পি ফিশ বক্স", "## One-Time", "গ্যাস", "ওয়ানটাইম বক্স", "লাল ব্যাগ", "রেগুলার টিস্যু", "তাওয়াল টিস্যু", "টয়লেট টিস্যু", "হ্যান্ড ওয়াস", "হ্যান্ড সেনিটাইজার", "ডেটল/স্যাভলন", "ফ্লোর ক্লিনার", "প্রিন্টার রোল", "এয়ার ফ্রেসনার", "হারপিক", "অর্ডার স্লিপ", "মাস্ক", "এয়ার পকেট", "গ্লাস ক্লিনার", "প্যাকেজিং ট্যাপ", "কস্টেপ ছোট", "পানি", "কোক সিরাপ", "স্প্রাইট সিরাপ", "ফান্টা সিরাপ", "কোক গ্লাস ছোট", "কোক গ্লাস বড়", "ড্রিংস স্ট্র"];
+const STORE0=[["Store FC1",["লবণ","মরিচ গুঁড়া","হোয়াইট b","ব্লাক পেপার","ওরগানো","লিনাগা","জিরাগুঁড়া","গরম মসলা","CLOVES","মাস্টার্ড","White Bread Crumb","ডিম","ওরেস্টার সস","আদা","পেঁয়াজ","রসুন","সয়াবিন তেল","ম. রেড কাস","ময়","চিলি সস","টমেটো সস","বি.বি.কিউ চীনা সস","ভুস","চিনি","কর্নফ্লাওয়ার","Cinnamon","Starni","নাগা (নিকাবিনা)","বেডিং সোডা","বাটার","কাঠিন","ময়দা","আস্ত জিরা","গুঁড়া মরিচ","পাপ্রিকা","গালিক পাউডার","অনিয়ন পাউডার","শুকনা মরিচ","কাশমিরি মরিচ","ময় সস","এগ পলি","ফিট পলি","গার্ডেন পলি","রাইস পলি","HONEY","ডাস্টার","Wings BOX","মরিচ মসলা","mangsho poli"]],["Store FC2",["চিকনা পেটি","ফিশ পেটি","Crispy Fish Full","মিলানেজ","সেভেনটিন চিকেন","চিকেন উইংস","tempura chicken","ফ্রেশ ব্রা চিকেন","tempura fish","ক্রিসপি তরী ফিস","ক্রিসপি চিকেন পেটি","BBQ Sauce","Naga Sauce","Laccha Bun","Masala","চিলি ফ্লেক্স","চিলি ফ্লস","টাওয়াল ফিশ","Onion Ring","Caramel Onion","RAW চিকেন","RAW ডরি ফিস","RAW ফিস","RAW উইংস","cheese","Golden Patty ckn","বড় ব্যাগ","ছোট ব্যাগ","মাঝারি ব্যাগ","ফ্রেমফ্রাই বক্স","ট্রে পেপার","বার্গার রেপিং","ডেট ফ্রিকার","চিকেন ফ্রিকার","ফিশ ফ্রিকার","শক গ্লাস ফ্রিকার","বার্গার টে","কফি স্টাকেট","নিট বক্স","smash chiken","smash beef","Milanese BOX","nuggets","Crispy fish box","f f box small","Korean Sauce","XXL Box"]]];
+function storeCard(){
+ if(!isStoreBr())return '';
+ const have=new Set(DB.products.filter(p=>pfq(p)=='store').map(p=>p.name.trim().toLowerCase()));
+ const left=STORE0.reduce((n,g)=>n+g[1].filter(x=>!have.has(x.toLowerCase())).length,0);
+ return `<div class="card"><h2>Store stock list (Bashundhara)</h2><p class="hint">${left?left+' store products are not added yet. They will be added as <b>Store</b> stock (sections Store FC1 and Store FC2). Price and unit are 0 / empty; fill them in the list below.':'All store products are already added.'}</p>${left?'<button class="b" onclick="loadStore()">Add store products</button>':''}</div>`}
+function loadStore(){
+ const have=new Set(DB.products.filter(p=>pfq(p)=='store').map(p=>p.name.trim().toLowerCase()));let n=0;
+ STORE0.forEach(g=>{if(!DB.sections.includes(g[0]))DB.sections.push(g[0]);g[1].forEach(nm=>{const k=nm.toLowerCase();if(have.has(k))return;have.add(k);DB.products.push({id:nid(),name:nm,unit:'',price:0,init:0,min:0,dept:'Kitchen',section:g[0],freq:'store',on:true});n++})});
+ persist();toast(n+' store products added');products()}
+function dailyCard(){
+ const have=new Set(DB.products.filter(p=>pfq(p)=='daily').map(p=>p.name.trim().toLowerCase()));
+ const left=DAILY0.reduce((n,g)=>n+g[1].filter(x=>!have.has(x.toLowerCase())).length,0);
+ return `<div class="card"><h2>Daily stock list (from Daily Logbook)</h2><p class="hint">${left?left+' products from your Daily Logbook are not added yet. They will be added as <b>Daily</b> stock with sections Raw, Bun, Mayonnaise, Vegetables, Frozen, Drinks and Horof. Price and unit are 0 / empty; fill them in the list below.':'All Daily Logbook products are already added.'}</p>${left?'<button class="b" onclick="loadDaily()">Add daily products</button>':''}</div>`}
+function loadDaily(){
+ const have=new Set(DB.products.filter(p=>pfq(p)=='daily').map(p=>p.name.trim().toLowerCase()));let n=0;
+ DAILY0.forEach(g=>{if(!DB.sections.includes(g[0]))DB.sections.push(g[0]);g[1].forEach(nm=>{const k=nm.toLowerCase();if(have.has(k))return;have.add(k);DB.products.push({id:nid(),name:nm,unit:'',price:0,init:0,min:0,dept:'Kitchen',section:g[0],freq:'daily',on:true});n++})});
+ persist();toast(n+' daily products added');products()}
 function bulkCard(){
  return `<div class="card"><h2>Add many products at once</h2><div class="bar">
  <label>Location<select id="bl">${DB.locations.map(x=>`<option>${esc(x)}</option>`).join('')}</select></label>
  <label>Section (lines without ## heading)<select id="bs">${DB.sections.map(x=>`<option>${esc(x)}</option>`).join('')}</select></label>
- <button class="b" onclick="bulkAdd()">Add all</button></div>
+ <label>Stock type<select id="bf">${freqOpts().map(x=>`<option value="${x}">${x[0].toUpperCase()+x.slice(1)}</option>`).join('')}</select></label><button class="b" onclick="bulkAdd()">Add all</button></div>
  <label style="display:block;margin-top:10px">One product name per line. A line starting with ## sets the section for the lines below it.<textarea id="bt" rows="8" style="width:100%;box-sizing:border-box">${DB.bulkV3?'':esc(BULK0.join('\n'))}</textarea></label>
  <p class="hint">Price, opening stock and alert are set to 0. Sections are created if missing. Products already in the list keep their data but get the new section.</p></div>`}
 function bulkAdd(){
@@ -463,37 +522,62 @@ function bulkAdd(){
   if(line.startsWith('##')){sec=line.replace(/^#+/,'').trim()||sec;if(!DB.sections.includes(sec))DB.sections.push(sec);return}
   const k=line.toLowerCase(),e=by.get(k);
   if(e){if(e.section!==sec){e.section=sec;u++}return}
-  const p={id:nid(),name:line,unit:'',price:0,init:0,min:0,dept:loc,section:sec,on:true};DB.products.push(p);by.set(k,p);n++});
+  const p={id:nid(),name:line,unit:'',price:0,init:0,min:0,dept:loc,section:sec,freq:$('#bf').value,on:true};DB.products.push(p);by.set(k,p);n++});
  DB.bulkV3=1;persist();toast(n+' added, '+u+' moved to their section');products()}
+const DAILY0=[["Raw",["লবন","চিনি","গুড়া দুধ","নিকোবিনা","যুগল চাটনি","মাশরুম","বেবি কর্ন","ব্ল্যাক পেপার","ভিনেগার","BBQ Raw","হোয়াইট পেপার গুড়া","জিরা গুড়া","মরিচের গুড়া","কিউকাম্বার পিকেল","কাঁচা বাদাম","ভাঁজা বাদাম","কাঁচা ছোলা","সিদ্ধ ছোলা","ময়দা","কর্ন ফ্লাওয়ার","বাটার","বেকিং পাউডার","ম্যাগি মাসালা","মধু","চিলি সস","টমেটো সস","টমেটো সস প্যাকেট","বিট লবণ","ডিম","মায়োনিজ তৈল","পোড়া তেল","ফ্রায়ার তৈল","মাস্টার্ড","চাউলের গুরা","সিতাকি মাশরুম","জেলেপিনো","পেয়াজ ভাঁজা"]],["Bun",["রেগুলার বান","ব্রিউচ বান","সেন্ডউইচ বান","ব্রাউন স্লাইস ব্রেড","লাচ্ছা বান"]],["Mayonnaise",["বার্গার মায়োনিজ","সেন্ডুইচ মায়োনিজ","স্পাইসি মায়োনিজ","মিটবক্স মায়োনিজ","হাউজ স্পেশাল"]],["Vegetables",["পেয়াজ","টমোটো","রসুন","লেটুস","পুদিনা","গোল লেবু","লম্বা লেবু","বাঁধাকপি","গাজর","শসা","কেপসিকাম","বোম্বাই মরিচ","গ্রিন এপেল","মাল্টা","পেয়াজ পাতা","ডালিম"]],["Frozen",["চিকেন পেটি","বিফ পেটি","চিজ পেটি","চিকেন টেন্ডার","বার্গার চিজ","মিটবক্স চিজ","মিলানেজ","সেন্ডউইচ চিকেন","চিকেন উইংস","ফিস এন্ড চিপস","ক্রিসপি ডরিপিস","ক্রিসপি চিকেন পেটি","চিকেন নাগেট্স","BBQ Sauce","Naga Sauce","Olive Sauce","ড্রেসিং","Double BBQ","Masala","চিলি প্লেক্স","চিকেন পেপারনি","বিফ বেকন","চিকেন সসেজ","ফ্রেন্সফ্রাই Bonton","পটেটো ওয়েজেস","চিজ","XXL Frued chicken","Five spice","Smoky Lime","Chilli","Spice wings","চিকেন তাম্বুরা","ফিস তাম্বুরা","ক্রিস্পি ফিশ হাফ","ক্রিস্পি ফিশ ফুল","লাচ্ছা চিকেন","লাচ্ছা বিফ","কেরামেল অনিওন","অনিওন রিং"]],["Drinks",["কনডেন্স মিল্ক","কেরামেল সিরাপ","কফি মেট","চকলেট চিপস","কোল্ড কফি মিক্সিং","ভ্যানিলা মিক্সিং","ভ্যানিলা আইসক্রিম","তরল দুধ","নিউট্রেলা চকলেট","কিটকেট চকলেট","ওরিও চকলেট","চকো পাউডার","কফি","চকলেট সিরাপ","সুগার সিরাপ","স্প্রাইট বোতল","সোডা ওয়াটার","ফান্টা বোতল","ব্লু কোরাকাও সিরাপ","শেক গ্লাস","শেক স্ট্র","মেজিক পাইপ","কভার স্ট্র","বোবা পার্ল","মাচা পাউডার","স্ট্রবেরি আইসক্রিম","স্ট্রবেরি সিরাপ","হাজেলে নাট সিরাপ"]],["One-Time",["হ্যান্ড গ্লভস","সাওয়ার ক্যাপ","রাইস পলি","গার্ভেস পলি","সিট পলি","মিলানেসে পলি","মায়োনিজ পলি","সস কাপ","হুইল পাউডার","স্টিল রোল","ডাস্টার","ফয়েল","জালি ব্যাগ","কফি গ্লাস ২২০ মিলি.","ওয়ানটাইম চামচ"]],["Horof",["বড় ব্যাগ","মাঝারি ব্যাগ","ছোট ব্যাগ","ফ্রেন্সফ্রাই বক্স","ট্রে পেপার","বার্গার রেপিং","বার্গার রেপিং বড়","ডেট স্টিকার","চিকেন স্টিকার","বিফ স্টিকার","শেক গ্লাস স্টিকার","বার্গার ট্রে","কফি জ্যাকেট","মিট বক্স","ফ্রেন্সফ্রাই বক্স স্মল","ফিস এন্ড ছিপ্স বক্স","টাইওানিস চিকেন বক্স","উইংস বক্স","XXL বক্স","লাচ্ছা বক্স","ক্রিস্পি ফিশ বক্স"]]];
 /* ---------- DAILY SALES REPORT ---------- */
 var SDT=ymd(new Date()),SPT=null;
 const SDEF={cc:'20,000',sn0:'Product From Store Bill',sn1:'Pathao Total Sale',sn2:'Horof',sn3:'Cheese',sn4:'Bonton',sn5:'Zakir vai'};
 const SV=()=>DB.sales[SDT]||SDEF;
 const sg=k=>parseFloat(String(SV()[k]??'').replace(/,/g,''))||0;
 const SI=(k,a)=>`<input data-k="${k}" value="${esc(SV()[k]??'')}" ${a?'inputmode="decimal" onchange="sFmt(this)"':''} oninput="sSet(this)">`;
+const SC=()=>({f:11,o:18,s:11,...(DB.scfg||{})});
+const hiK=(S,p)=>{let m=-1;const re=new RegExp('^'+p+'(\\d+)$');for(const k in S){const q=re.exec(k);if(q&&String(S[k]??'').trim()!==''&&+q[1]>m)m=+q[1]}return m+1};
+const RN=(S,p,c)=>Math.max(c,hiK(S,p)),nF=S=>RN(S,'f[wna]',SC().f),nO=S=>RN(S,'o[wna]',SC().o),nS=S=>RN(S,'s[na]',SC().s);
+const SBI=[['ci','Cash In =','+',0],['op','Opening =','+',0],['ts','Total Sale =','+',1],['card','Card Sale =','-',1],['tc','Total Cost (-) =','-',1,1],['pat','Pathao (-) =','-',1],['fp','Food Panda (-) =','-',1],['hn','H.N (-) =','-',1],['bk','BKASH (-) =','-',1],['vd','Void =','0',0],['cf','Complementary Food =','0',0]].map(a=>({id:a[0],key:a[0],txt:a[1],sign:a[2],tot:a[3],fixed:a[4]}));
+const sItems=()=>[...SBI.map(b=>({...b,...((DB.sov||{})[b.id]||{})})),...(DB.sitems||[]).map(c=>({id:c.id,key:'xc_'+c.id,txt:c.label+(c.sign=='0'?'':' ('+c.sign+')')+' =',sign:c.sign,tot:c.sign=='0'?0:1,off:c.off,custom:1}))];
+const sVis=(it,S)=>!it.off||String(S[it.key]??'').trim()!=='';
+const sLbl=it=>(DB.slabels||{})['l_'+it.key]||it.txt;
+function xBar(){if(!isTop())return '';const all=sItems(),its=all.filter(i=>!i.off),gone=all.filter(i=>i.off&&!i.custom);
+ const opt=(v,cur)=>[['+','Plus (+)'],['-','Minus (-)'],['0','Info only']].map(([x,n])=>`<option value="${x}" ${x==cur?'selected':''}>${n}</option>`).join('');
+ return `<div class="bar" style="margin-bottom:8px"><b style="align-self:center">Admin: list items</b>${its.map(i=>`<span style="display:inline-flex;gap:4px;align-items:center;border:1px solid #555;border-radius:6px;padding:3px 6px">${esc(sLbl(i))}${i.fixed?'':`<select onchange="xSign('${i.id}',this.value)">${opt(0,i.sign)}</select><button class="g x" onclick="xDel('${i.id}')">Remove</button>`}</span>`).join('')}</div>
+ <div class="bar" style="margin-bottom:8px"><input id="xi" placeholder="New item name"><select id="xs">${opt(0,'+')}</select><button class="b" onclick="xAdd()">Add item</button>${gone.map(i=>`<button class="g" onclick="xBack('${i.id}')">Restore ${esc(i.txt)}</button>`).join('')}</div>`}
+function xAdd(){const n=$('#xi').value.trim();if(!n)return toast('Type the item name');DB.sitems=[...(DB.sitems||[]),{id:'c'+Date.now().toString(36),label:n,sign:$('#xs').value}];persist();sales();sync()}
+function xPut(id,o){const c=(DB.sitems||[]).find(x=>x.id==id);if(c)Object.assign(c,o);else DB.sov={...(DB.sov||{}),[id]:{...((DB.sov||{})[id]||{}),...o}};persist();sales();sync()}
+function xSign(id,v){if(!confirm('Changing plus/minus also changes the totals of ALL past days that use this item. Continue?'))return sales();xPut(id,{sign:v})}
+function xDel(id){if(confirm('Remove this item? Days that already have a value for it will still show it.'))xPut(id,{off:true})}
+function xBack(id){xPut(id,{off:false})}
+function rowBar(){if(!isTop())return '';const c=SC(),b=(k,n)=>`<span class="hint" style="align-self:center">${n} rows</span><button class="g" onclick="sRow('${k}',-1)">&minus;</button><b style="align-self:center">${c[k]}</b><button class="g" onclick="sRow('${k}',1)">+</button>`;
+ return `<div class="bar" style="margin-bottom:8px"><b style="align-self:center">Admin: report rows</b>${b('f','Food cost')}${b('o','Operation cost')}${b('s','Supplier')}</div>`}
+function sRow(k,d){const c=SC();DB.scfg={...c,[k]:Math.min(40,Math.max(1,c[k]+d))};persist();sales();sync()}
 function sRows(p,n){let h='';for(let i=0;i<n;i++)h+=`<tr><td>${SI(p+'w'+i)}</td><td>${SI(p+'n'+i)}</td><td>${SI(p+'a'+i,1)}</td></tr>`;return h}
 const LI=(k,d,w,t)=>`<input class="lbi" data-l="${k}" value="${esc((DB.slabels||{})[k]??d)}" ${t?`style="font-size:${TFS(String((DB.slabels||{})[k]??d))}px"`:''} ${w?`style="width:${((DB.slabels||{})[k]??d).length+1}ch"`:''} oninput="lSet(this)">`;
 const TFS=v=>v.length>12?Math.max(14,Math.floor(28*12/v.length)):28;
 function lSet(el){if(el.dataset.l=='l_title')el.style.fontSize=TFS(el.value)+'px';DB.slabels=DB.slabels||{};DB.slabels[el.dataset.l]=el.value;if(el.dataset.l=='l_date')el.style.width=(el.value.length+1)+'ch';clearTimeout(SPT);SPT=setTimeout(persist,700)}
 function sales(){
- const L=[['Cash In =','ci'],['Opening =','op'],['Total Sale =','ts'],['Total =','t1','tot'],['Card Sale =','card'],['Total =','t2','tot'],['Total Cost (-) =','tc'],['Total =','t3','tot'],['Pathao (-) =','pat'],['Total =','t4','tot'],['Food Panda (-) =','fp'],['Total =','t5','tot'],['H.N (-) =','hn'],['Total =','t6','tot'],['BKASH (-) =','bk'],['Total =','t7','tot'],['Cash Balance =','cb'],['Extra =','ex'],['Void =','vd'],['Complementary Food =','cf'],['Cash Closing =','cc']];
- const C=new Set(['t1','t2','tc','t3','t4','t5','t6','t7','ex']),M=new Set(['cb','ex','cc']);
- const left=L.map(([t,k,lk])=>`<tr class="${C.has(k)&&k!='tc'&&k!='ex'?'st':''}${M.has(k)||k=='tc'?' mj':''}"><td colspan="2">${LI('l_'+(lk||k),t)}</td><td>${C.has(k)?`<span id="x_${k}"></span>`:SI(k,1)}</td></tr>`).join('');
- let sup='';for(let i=0;i<11;i++)sup+=`<tr><td class="lb">${i+1}</td><td>${SI('sn'+i)}</td><td>${SI('sa'+i,1)}</td></tr>`;
+ const left=sVals(SV()).ls.map(e=>`<tr class="${e.kind=='tot'?'st':''}${e.y?' mj':''}"><td colspan="2">${LI('l_'+(e.lk||e.k),e.d)}</td><td>${e.kind=='in'?SI(e.k,1):`<span id="x_${e.sid}"></span>`}</td></tr>`).join('');
+ let sup='';for(let i=0;i<nS(SV());i++)sup+=`<tr><td class="lb">${i+1}</td><td>${SI('sn'+i)}</td><td>${SI('sa'+i,1)}</td></tr>`;
  const dt=pd(SDT).toLocaleDateString('en-GB',{weekday:'long',day:'2-digit',month:'short',year:'numeric'});
  const cg='<colgroup><col style="width:17%"><col style="width:53%"><col style="width:30%"></colgroup>';
  $('#v').innerHTML=`<div class="card"><div class="bar"><label>Date<input type="date" value="${SDT}" onchange="SDT=this.value;sales()"></label>
- <button class="g" onclick="sNav(-1)">&#9664; Prev</button><button class="g" onclick="sNav(1)">Next &#9654;</button><button class="b" onclick="sPrint()">Print (1 page)</button><button class="g" onclick="sOpen()">Opening = yesterday's closing</button><button class="g" onclick="sFood()">Food cost from stock usage</button><button class="g" onclick="sSave()">Save</button><button class="b" onclick="sImg('png')">Save PNG</button><button class="b" onclick="sImg('jpeg')">Save JPG</button><button class="g" onclick="if(confirm('Reset all titles and labels to default?')){DB.slabels={};persist();sales()}">Reset labels</button></div>
+ <button class="g" onclick="sNav(-1)">&#9664; Prev</button><button class="g" onclick="sNav(1)">Next &#9654;</button><button class="b" onclick="sPrint()">Print (1 page)</button><button class="g" onclick="sOpen()">Opening = yesterday's closing</button><button class="g" onclick="sFood()">Food cost from stock usage</button><button class="g" onclick="sSave()">Save</button><button class="b" onclick="sImg('png')">Save PNG</button><button class="b" onclick="sImg('jpeg')">Save JPG</button><button class="g" onclick="if(confirm('Reset all titles and labels to default?')){DB.slabels={};persist();sales()}">Reset labels</button></div>${rowBar()}${xBar()}
  <div class="bar" id="kp" style="gap:18px;margin-bottom:10px"></div><div class="rw" style="overflow-x:auto"><div id="rpt"><div class="hd"><div>${LI('l_date','Date:',1)}&nbsp;${dt}</div><div class="ttl">${LI('l_title','BURGEROLOGY',0,1)}</div><div class="lg"><img src="${DB.logo||DEF}" alt=""></div></div>
- <div class="cols"><div><table>${cg}<tr><th>${LI('l_name','Name')}</th><th>${LI('l_fc','Food Cost')}</th><th>${LI('l_amt','Amount')}</th></tr>${sRows('f',11)}<tr class="mj"><td colspan="2">${LI('l_tot','Total =')}</td><td><span id="x_food"></span></td></tr>${left}</table></div>
- <div><table>${cg}<tr><th>${LI('l_name','Name')}</th><th>${LI('l_oc','Operation Cost')}</th><th>${LI('l_amt','Amount')}</th></tr>${sRows('o',18)}<tr class="mj"><td colspan="2">${LI('l_opr','TOTAL')}</td><td><span id="x_opr"></span></td></tr><tr class="mj"><td colspan="2">${LI('l_tc2',"Today's Total Cost =")}</td><td><span id="x_tc2"></span></td></tr>
+ <div class="cols"><div><table>${cg}<tr><th>${LI('l_name','Name')}</th><th>${LI('l_fc','Food Cost')}</th><th>${LI('l_amt','Amount')}</th></tr>${sRows('f',nF(SV()))}<tr class="mj"><td colspan="2">${LI('l_tot','Total =')}</td><td><span id="x_food"></span></td></tr>${left}</table></div>
+ <div><table>${cg}<tr><th>${LI('l_name','Name')}</th><th>${LI('l_oc','Operation Cost')}</th><th>${LI('l_amt','Amount')}</th></tr>${sRows('o',nO(SV()))}<tr class="mj"><td colspan="2">${LI('l_opr','TOTAL')}</td><td><span id="x_opr"></span></td></tr><tr class="mj"><td colspan="2">${LI('l_tc2',"Today's Total Cost =")}</td><td><span id="x_tc2"></span></td></tr>
  <tr><th>${LI('l_sl','SL No')}</th><th>${LI('l_sup','Supplier Receive Product')}</th><th>${LI('l_amt','Amount')}</th></tr>${sup}<tr class="mj"><td colspan="2">${LI('l_dp','Deposit Money =')}</td><td><span id="x_dp"></span></td></tr></table></div></div></div></div>
  <p class="hint">Every text (titles, labels like H.N, column names) can be edited: just click it and type. Labels are the same for all days.</p></div><div class="card" id="ssum"></div>`;
  sCalc();salesLock()}
 function sVals(S){
  const g=k=>parseFloat(String(S[k]??'').replace(/,/g,''))||0,sum=(p,n)=>{let t=0;for(let i=0;i<n;i++)t+=g(p+'a'+i);return t};
- const food=sum('f',11),opr=sum('o',18),tc=food+opr,t1=g('ci')+g('op')+g('ts'),t2=t1-g('card'),t3=t2-tc,t4=t3-g('pat'),t5=t4-g('fp'),t6=t5-g('hn'),t7=t6-g('bk'),has=String(S.cb??'').trim()!=='';
- return{food,opr,tc,t1,t2,t3,t4,t5,t6,t7,ts:g('ts'),card:g('card'),pat:g('pat'),fp:g('fp'),hn:g('hn'),bk:g('bk'),cb:g('cb'),vd:g('vd'),cf:g('cf'),has,ex:has?g('cb')-t7:0,dp:has?g('cb')-g('cc'):0}}
+ const food=sum('f',60),opr=sum('o',60),tc=food+opr,has=String(S.cb??'').trim()!=='',ls=[],its=sItems();let run=0;
+ its.filter(it=>it.sign!='0'&&sVis(it,S)).forEach(it=>{const a=it.key=='tc'?tc:g(it.key);run+=it.sign=='-'?-a:a;
+  ls.push(it.key=='tc'?{k:'tc',d:it.txt,kind:'auto',sid:'tc',y:1,v:tc}:{k:it.key,d:it.txt,kind:'in'});
+  if(it.tot)ls.push({k:'t_'+it.id,lk:'tot',d:'Total =',kind:'tot',sid:'t_'+it.id,v:run})});
+ const ex=has?g('cb')-run:0;
+ ls.push({k:'cb',d:'Cash Balance =',kind:'in',y:1},{k:'ex',d:'Extra =',kind:'calc',sid:'ex',y:1,v:has?ex:''});
+ its.filter(it=>it.sign=='0'&&sVis(it,S)).forEach(it=>ls.push({k:it.key,d:it.txt,kind:'in'}));
+ ls.push({k:'cc',d:'Cash Closing =',kind:'in',y:1});
+ return{ls,food,opr,tc,ts:g('ts'),card:g('card'),pat:g('pat'),fp:g('fp'),hn:g('hn'),bk:g('bk'),cb:g('cb'),vd:g('vd'),cf:g('cf'),has,ex,dp:has?g('cb')-g('cc'):0}}
 const pct=(a,b)=>b?(a/b*100).toFixed(1)+'%':'-';
 function sSummary(){
  const ds=Object.keys(DB.sales).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort().reverse(),mo=SDT.slice(0,7);
@@ -502,13 +586,13 @@ function sSummary(){
  return`<h2>Sales summary</h2><p class="hint">${mo}: ${T.n} days &middot; Sale ${f(T.ts)} &middot; Cost ${f(T.tc)} (${pct(T.tc,T.ts)}) &middot; Food ${pct(T.food,T.ts)} &middot; Extra ${f(T.ex)}</p>
  <div style="overflow-x:auto"><table style="min-width:520px"><tr><th style="text-align:left">Date</th><th>Total Sale</th><th>Total Cost</th><th>Food %</th><th>Cost %</th><th>Extra</th><th>Deposit</th></tr>${rows||'<tr><td colspan="7">No reports yet</td></tr>'}</table></div>`}
 function sCalc(){
- const v=sVals(SV()),V={food:v.food,opr:v.opr,tc:v.tc,tc2:v.tc,t1:v.t1,t2:v.t2,t3:v.t3,t4:v.t4,t5:v.t5,t6:v.t6,t7:v.t7,ex:v.has?v.ex:'',dp:v.has?v.dp:''};
+ const v=sVals(SV()),V={food:v.food,opr:v.opr,tc:v.tc,tc2:v.tc,dp:v.has?v.dp:''};(v.ls||[]).forEach(e=>{if(e.sid)V[e.sid]=e.v});
  for(const k in V){const e=$('#x_'+k);if(!e)continue;const x=V[k];e.textContent=x===''?'':f(x);e.className=x<0?'neg':''}
  const kp=$('#kp');if(kp)kp.innerHTML=`<span>Sale <b>${f(v.ts)}</b></span><span>Total cost <b>${f(v.tc)}</b> (${pct(v.tc,v.ts)})</span><span>Food cost <b>${pct(v.food,v.ts)}</b></span><span>Sale &minus; cost <b>${f(v.ts-v.tc)}</b></span>${v.has?`<span>Extra <b>${f(v.ex)}</b></span>`:''}`;
  const sm=$('#ssum');if(sm)sm.innerHTML=sSummary()}
 function sNav(n){const d=pd(SDT);d.setDate(d.getDate()+n);SDT=ymd(d);sales()}
 function sPrevCC(){const ds=Object.keys(DB.sales).filter(d=>d<SDT&&String(DB.sales[d].cc??'').trim()!=='').sort();return ds.length?parseFloat(String(DB.sales[ds[ds.length-1]].cc).replace(/,/g,''))||0:0}
-function sOpen(){const v=sPrevCC();if(!v)return toast('No earlier Cash Closing found');const i=$('#rpt input[data-k="op"]');i.value=f(v);sSet(i);toast('Opening = '+f(v))}
+function sOpen(){const v=sPrevCC();if(!v)return toast('No earlier Cash Closing found');const i=$('#rpt input[data-k="op"]');if(!i)return toast('Opening is not in the list');i.value=f(v);sSet(i);toast('Opening = '+f(v))}
 function sSet(el){if(salesLocked())return;
  if(!DB.sales[SDT])DB.sales[SDT]={...SDEF};
  DB.sales[SDT][el.dataset.k]=el.value;DB.sales[SDT]._t=Date.now();DB.salesPending=DB.salesPending||[];if(!DB.salesPending.includes(SDT))DB.salesPending.push(SDT);sCalc();
@@ -530,7 +614,7 @@ async function sImg(type){
 function sSave(){clearTimeout(SPT);persist();toast('Saved '+SDT)}
 function sPrint(){sSave();document.body.classList.add('sp');setTimeout(()=>{window.print();setTimeout(()=>document.body.classList.remove('sp'),500)},100)}
 function sFood(){
- let t=0;DB.entries.filter(e=>e.date==SDT).forEach(e=>{const u=e.open+e.add-e.close;if(u>0)t+=u*(e.price||0)});
+ let t=0;DB.entries.filter(e=>e.date==SDT&&pfq(DB.products.find(p=>p.id==e.pid)||{})=='daily').forEach(e=>{const u=e.open+e.add-e.close;if(u>0)t+=u*(e.price||0)});
  if(!t)return toast('No stock usage value for this date');
  const r=[...document.querySelectorAll('#rpt input[data-k^="fn"]')].find(i=>!i.value&&!$('#rpt input[data-k="fa'+i.dataset.k.slice(2)+'"]').value);
  if(!r)return toast('Food cost rows are full');
